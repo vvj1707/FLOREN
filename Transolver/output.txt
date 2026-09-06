@@ -1,0 +1,33 @@
+Training GINO | N_train=100 N_test=400
+Backend: gpu
+GINO backend: gpu (cuda:0)
+Physics penalty: lambda=0.1
+Precomputing neighbours (train)...
+Precomputing neighbours (test)...
+Training GINO | N_train=100 N_test=400 epochs=301
+Traceback (most recent call last):
+  File "/home/varun/.virtualenvs/Electronics Cooling/lib/python3.12/site-packages/jax/_src/pjit.py", line 657, in _infer_input_type
+    avals.append(core.shaped_abstractify(x))
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/varun/.virtualenvs/Electronics Cooling/lib/python3.12/site-packages/jax/_src/core.py", line 1981, in shaped_abstractify
+    raise TypeError(
+TypeError: Cannot interpret value of type <class 'function'> as an abstract array; it does not have a dtype attribute
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/varun/Zenteiq/ElectronicsCooling/NeuralNetworks/6_PhysLoss/GINO/01_train_model.py", line 118, in <module>
+    main()
+  File "/home/varun/Zenteiq/ElectronicsCooling/NeuralNetworks/6_PhysLoss/GINO/01_train_model.py", line 70, in main
+    trained = train_gino(
+              ^^^^^^^^^^^
+  File "/home/varun/Zenteiq/ElectronicsCooling/NeuralNetworks/6_PhysLoss/GINO/_utils.py", line 474, in train_gino
+    _, _, aux = model.eval_step(batch, loss_fn)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/varun/Zenteiq/ElectronicsCooling/NeuralNetworks/6_PhysLoss/GINO/_utils.py", line 329, in eval_step
+    return self._eval_jit(self.params, model_inputs, kwargs["y"], loss_fn)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: Error interpreting argument to <function GINOFlaxModelWrapper._build_eval_jit.<locals>._eval at 0xe34a3ff5cd60> as an abstract array. The problematic value is of type <class 'function'> and was passed to the function at path loss_fn.
+This typically means that a jit-wrapped function was called with a non-array argument, and this argument was not marked as static using the static_argnums or static_argnames parameters of jax.jit.
+--------------------
+For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.
