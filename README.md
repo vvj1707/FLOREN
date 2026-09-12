@@ -1,437 +1,146 @@
-# FLOREN
+# FLOREN Results (Fourier Neural Operator vs. Transolver)
 
-**FLOREN** is a research codebase for learning and analysing unsteady flow fields on the **Warped-IFW** dataset using neural operators and point-cloud models.
+FLOREN studies **geometry-conditioned unsteady flow prediction** on the **Warped-IFW** benchmark. The task is to forecast **5 future velocity frames from 5 past velocity frames** on irregular CFD point clouds while generalising to **unseen wing geometries**.
 
-The repository contains two main modelling pipelines:
+The benchmark is motivated by aerodynamic flow modelling around a warped front-wing configuration derived from an **Imperial College / McLaren-style front-wing setup**, commonly described in the Warped-IFW dataset and GRaM competition materials as being based on a front-wing geometry developed at Imperial and inspired by a **McLaren MP4-17 / early-2000s F1 front-wing configuration**, often associated with the 2002 era. In FLOREN, each sample contains a 3D point cloud around the wing, surface-point indices, pressure, past velocity history, and future velocity targets. FLOREN compares two ways of handling that geometry:
 
-- **FNO**: a voxel-grid / Fourier Neural Operator baseline in JAX
-- **TransolverAR**: an autoregressive Transolver-style model that operates directly on irregular point clouds
+- **Fourier Neural Operator** -- a voxel-grid baseline that rasterises the irregular point cloud onto a fixed 3D grid, predicts future flow on that grid, and interpolates predictions back to the original points.
+- **Transolver** -- an autoregressive point-cloud model that operates directly on the irregular mesh / point cloud without voxelisation.
 
-The project is designed to support:
+Useful references:
 
-- reproducible training and evaluation
-- geometry-disjoint generalisation experiments
-- comparison against simple baselines
-- checkpointing and saved run artifacts
-- visualisation, diagnostics, and report generation
+- [Warped-IFW dataset on Hugging Face](https://huggingface.co/datasets/gram-competition/warped-ifw)
+- [GRaM Competition @ ICLR 2026](https://gram-competition.github.io/)
+- [Competition / dataset paper PDF](https://raw.githubusercontent.com/mlresearch/v326/main/assets/suk26a/suk26a.pdf)
 
----
+This benchmark is a **Fourier Neural Operator vs. Transolver comparison** on Warped-IFW, and the repository itself is called **FLOREN**.
 
-## Overview
+## Setup
 
-The dataset consists of CFD-style samples containing:
+| | Value |
+|---|---|
+| Dataset | Warped-IFW |
+| Task | Predict 5 future velocity frames from 5 past frames |
+| Split | Geometry-disjoint train / test |
+| Input per point | 5 past velocity frames + distance-to-surface |
+| Output | 5 future velocity frames |
+| Fourier Neural Operator representation | Voxelised 3D grid -> interpolate back to points |
+| Transolver representation | Direct irregular mesh / point cloud |
+| Primary reported metric | Point-level relative L2 |
+| Additional diagnostics | Per-sample metrics, component-loss plots, static visualisations |
 
-- 3D point positions
-- airfoil / surface point indices
-- pressure histories
-- input velocity histories
-- future output velocities
-
-Across the project, the learning task is to predict **5 future velocity frames** from **5 past velocity frames**, while conditioning on geometry.
-
-Geometry is represented implicitly through:
-
-- spatial coordinates
-- distance-to-surface information
-- point-cloud structure or rasterised occupancy
-
-This repository explores two different ways of solving that problem:
-
-### 1. FNO pipeline
-
-The FNO pipeline converts irregular point-cloud samples into fixed voxel grids and trains a **3D Fourier Neural Operator** to predict future flow fields.
-
-High-level flow:
-
-1. load raw `.npz` samples
-2. build pointwise features
-3. split train/test by geometry
-4. rasterise points to voxel grids
-5. train FNO in JAX
-6. interpolate predictions back to points
-7. evaluate and visualise results
-
-### 2. TransolverAR pipeline
-
-The Transolver pipeline works **directly on irregular point clouds** and predicts future frames autoregressively.
-
-High-level flow:
-
-1. load raw `.npz` samples
-2. build pointwise features
-3. split train/test by geometry
-4. optionally crop meshes
-5. optionally subsample meshes
-6. normalise inputs and targets
-7. train Transolver autoregressively
-8. evaluate on subsampled and/or full meshes
-9. save artifacts and generate diagnostics
-
----
-
-## Repository structure
-
-A typical top-level layout looks like this:
-
-```text
-FLOREN/
-├── data/
-│   └── warped-ifw/
-│       ├── *.npz
-│       └── ...
-├── fno/
-│   ├── config.py
-│   ├── load_data.py
-│   ├── loss.py
-│   ├── metrics.py
-│   ├── comparison.py
-│   ├── train.py
-│   ├── visualise_fno.py
-│   ├── trained_model/
-│   ├── results/
-│   └── outputs_fno/
-├── transolver/
-│   ├── checkpoint.py
-│   ├── config.py
-│   ├── evaluate.py
-│   ├── load_data.py
-│   ├── loss.py
-│   ├── normalisation.py
-│   ├── preprocessing.py
-│   ├── subsampling.py
-│   ├── train.py
-│   ├── visualise.py
-│   ├── model/
-│   │   └── core.py
-│   ├── trained_model/
-│   ├── results/
-│   ├── cache/
-│   └── outputs/
-├── docs/
-│   ├── FNO_directory_guide.md
-│   └── transolver_directory_guide.md
-└── README.md
-```
-
-> Exact folder names may vary slightly in your local repository, but the two core pipelines and their artifact directories are organised along these lines.
-
----
-
-## Data format
-
-Each raw Warped-IFW sample contains arrays such as:
-
-- `t`
-- `pos`
-- `idcs_airfoil`
-- `pressure`
-- `velocity_in`
-- `velocity_out`
-
-These are converted into a shared pointwise format used across the project:
-
-- `x`: point coordinates
-- `fx`: input features per point
-- `y`: future rollout targets
-- `idcs_airfoil`: local airfoil indices
-
-In both pipelines:
-
-- the first 15 input channels are the flattened 5-frame velocity history
-- 1 additional input channel stores distance-to-surface
-- the target contains 5 future velocity frames flattened to 15 channels
-
----
-
-## Train/test split
-
-A key design choice in FLOREN is the **geometry-disjoint split**.
-
-Samples are grouped by geometry ID parsed from the filename, and **entire geometries** are assigned either to train or test.
-
-This means:
-
-- no geometry appears in both train and test
-- evaluation measures generalisation to unseen geometries
-- the split is stronger than random file-level splitting
-
----
-
-## Main features
-
-### Common
-
-- Warped-IFW dataset loading
-- geometry-disjoint data splitting
-- pointwise supervised sample construction
-- saved metrics and model artifacts
-- plotting and post-hoc diagnostics
-
-### FNO
-
-- voxel-grid rasterisation
-- 3D FNO training in JAX
-- point-level interpolation from grid predictions
-- persistence baseline comparison
-- grid-native diagnostics
-
-### TransolverAR
-
-- direct irregular point-cloud modelling
-- autoregressive rollout training
-- teacher-forcing schedules
-- optional cropping around the airfoil
-- multiple subsampling policies
-- checkpoint save/resume support
-- optional fine-tuning on full meshes
-
----
-
-## Installation
-
-Because FLOREN is research code, exact environment setup may depend on your machine, CUDA setup, and local package versions.
-
-A typical setup is:
-
-```bash
-git clone <your-repo-url>
-cd FLOREN
-python -m venv .venv
-source .venv/bin/activate
-pip install -U pip
-pip install -r requirements.txt
-```
-
-If you do not yet have a `requirements.txt`, document the environment manually, including at least:
-
-- Python version
-- JAX / jaxlib version
-- NumPy
-- SciPy
-- Optax
-- Matplotlib
-- Weights & Biases
-- any operator / FNO dependency used by the FNO pipeline
-
-If running on GPU, ensure your installed JAX build matches your CUDA environment.
-
----
-
-## Quick start
-
-### Train the FNO baseline
+Reproduce the two pipelines from the repository root:
 
 ```bash
 cd fno
 python train.py
-```
-
-### Visualise FNO outputs
-
-```bash
-cd fno
 python visualise_fno.py
-```
 
-### Train TransolverAR
-
-```bash
-cd transolver
-python train.py --profile smoke_test
-```
-
-For a larger run:
-
-```bash
+cd ../transolver
 python train.py --profile full
-```
-
-### Visualise TransolverAR outputs
-
-```bash
-cd transolver
 python visualise.py
 ```
 
----
+## Competition standing
 
-## Configuration
+Using the available **Transolver** dataset-level result of **0.0638 ± 0.0198** from the competition-style table provided, the model would place:
 
-### FNO
+| Ranking | Model | Relative L2 error |
+|---|---|---:|
+| 1st | SmoothSplatNet | 0.0480 ± 0.0146 |
+| 2nd | CDFDoubleGridNet | 0.0498 ± 0.0144 |
+| 3rd | VRTEnsemble | 0.0510 ± 0.0151 |
+| 4th | Kagent | 0.0553 ± 0.0168 |
+| 5th | ResMLP | 0.0560 ± 0.0169 |
+| 6th | EnsembleSpatioTemporalModels | 0.0589 ± 0.0184 |
+| 7th | Transolver | 0.0638 ± 0.0198 |
+| 8th | TransolverCorrector | 0.0739 ± 0.0203 |
+| 9th | gEGNO | 0.0819 ± 0.0233 |
+| 10th | FiniteGraphV4 | 0.0837 ± 0.0230 |
+| 11th | AB-UPT | 0.0838 ± 0.0227 |
+| 12th | AirFormer | 0.0850 ± 0.0227 |
+| 13th | AeroChronoMixer | 0.0892 ± 0.0232 |
+| 14th | Transolver Residual | 0.0896 ± 0.0244 |
+| 15th | LeversTailV2Submission | 0.0970 ± 0.0230 |
+| **16th** | **FLOREN** | **0.0991** |
+| 17th | ImprovedMLP | 0.1002 ± 0.0238 |
+| 18th | FNO3DTimeRes | 0.1224 ± 0.0218 |
+| 19th | DeltaGraph | 0.1258 ± 0.0278 |
+| 20th | SpatiotemporalMNO | 0.1292 ± 0.0284 |
+| 21st | WaveletLatentOperator | 0.1978 ± 0.0163 |
+| 22nd | PerceiverFlow | 0.2436 ± 0.0406 |
+| 23rd | ZonalMoE | 0.5807 ± 0.1091 |
 
-The FNO pipeline uses constants in `config.py` for:
+This places **Transolver in 7th place** on the supplied leaderboard table. If **FLOREN** achieved **0.0991** relative L2, it would place **16th**, ahead of **ImprovedMLP**, and behind **LeversTailV2Submission** in the supplied ranking.
 
-- grid resolution
-- model width / layers / modes
-- optimisation settings
-- training epochs and batch size
-- test split fraction
+## Prediction
 
-### TransolverAR
+Frame-0 qualitative comparison on a held-out sample:
 
-The Transolver pipeline uses a `RunConfig` dataclass and named profiles such as:
+| Fourier Neural Operator (voxel-grid mapping) | Transolver (direct point cloud) |
+|:---:|:---:|
+| ![FNO 3D wing](FNO/outputs/single/000/sample000_frame0_3d_wing_surface.png) | ![Transolver 3D wing](Transolver/outputs/single/000/sample000_frame0_3d_wing_surface.png) |
+| ![FNO scatter](FNO/outputs/single/000/sample000_frame0_2d_scatter.png) | ![Transolver scatter](Transolver/outputs/single/000/sample000_frame0_2d_scatter.png) |
+| ![FNO contour](FNO/outputs/single/000/sample000_frame0_2d_contour_scatter.png) | ![Transolver contour](Transolver/outputs/single/000/sample000_frame0_2d_contour_scatter.png) |
 
-- `smoke_test`
-- `full`
+A multi-sample qualitative summary for Transolver is also included and provides evidence that the model works across multiple unseen airfoil / wing configurations rather than only a single held-out case:
 
-These control:
+![Transolver ux summary across multiple samples](Transolver/outputs/single/ux_summary_frame0_4x3.png)
 
-- optimisation
-- model size
-- teacher forcing
-- rollout supervision
-- cropping
-- subsampling
-- augmentation
-- checkpoint intervals
-- fine-tuning
-- W&B logging
+## Accuracy
 
-Many Transolver settings can be overridden from the command line.
+The most directly labelled quantitative comparison available from the supplied diagnostic outputs is the held-out **sample-0 point-level relative L2**:
 
----
+| Metric | Fourier Neural Operator | Transolver |
+|---|---:|---:|
+| Relative L2 (sample 0 overall) | 0.5486 | **0.1226** |
+| Relative L2 (sample 0, |u| error panel) | 0.4889 | **0.0378** |
+| Relative L2 (sample 0, ux error panel) | 0.4940 | **0.0425** |
+| Relative L2 (sample 0, uy error panel) | 0.8091 | **0.1247** |
+| Relative L2 (sample 0, uz error panel) | 0.8292 | **0.0804** |
 
-## Outputs and artifacts
+These are **sample-level diagnostic values**, not final dataset-wide means for both repository pipelines, but they provide the clearest like-for-like comparison available from the supplied result artifacts. For Transolver, the competition-style dataset-level result above additionally provides broader ranking context. FLOREN's own reported result is **0.0991**, which would place it **16th** on the supplied ranking.
 
-Training and evaluation produce artifacts such as:
+## Accuracy diagnostics
 
-- saved model parameters
-- normalisation statistics
-- config snapshots
-- checkpoints
-- prediction arrays
-- per-sample metrics
-- summary metrics
-- visual diagnostics
-- MATLAB export bundles
+| Fourier Neural Operator | Transolver |
+|:---:|:---:|
+| ![FNO training curves](FNO/outputs/diagnostics/training_curves.png) | ![Transolver ux summary](Transolver/outputs/single/ux_summary_frame0_4x3.png) |
 
-Typical artifact folders include:
+For the Fourier Neural Operator, the training-curve panel explicitly shows that the optimisation curves are measured in **normalised grid space**, which is not the same metric as the final point-level comparison metric.
 
-- `trained_model/`
-- `results/`
-- `outputs/` or `outputs_fno/`
-- `cache/`
+## Component-wise diagnostics
 
----
+| Fourier Neural Operator | Transolver |
+|:---:|:---:|
+| ![FNO component losses sample](FNO/outputs/single/000/sample000_component_losses.png) | ![Transolver component losses sample](Transolver/outputs/single/000/sample000_component_losses.png) |
+| ![FNO component boxplot](FNO/outputs/component_losses/dataset_component_loss_boxplot.png) | ![Transolver component boxplot](Transolver/outputs/component_losses/dataset_component_loss_boxplot.png) |
 
-## Visualisation and diagnostics
+The component-loss plots show a consistent gap in favour of **Transolver**. In the supplied diagnostics, the Fourier Neural Operator exhibits substantially larger errors in **uy** and **uz**, while Transolver keeps all four reported channels lower, including **|u|**.
 
-Both pipelines include post-training visualisation scripts for generating:
+## Batch metrics files
 
-- training curves
-- per-sample error summaries
-- component-wise loss analysis
-- 2D contour/scatter plots
-- animations across predicted frames
-- 3D wing/surface views
-- batch reports
-- MATLAB-compatible export bundles
+The most appropriate tabular files for sample-by-sample comparison are the batch-report CSVs:
 
-These tools are intended to make model behaviour interpretable beyond a single scalar metric.
+- [FNO_batch_report_metrics.csv](FNO/outputs/report/batch_report_metrics.csv)
+- [Transolver_batch_report_metrics.csv](Transolver/outputs/report/batch_report_metrics.csv)
 
----
+These are the best CSV artifacts to inspect when you want per-sample relative-L2 rankings for the two pipelines.
 
-## Documentation
+## Summary
 
-Detailed pipeline-level documentation is available in:
+| Metric | Fourier Neural Operator | Transolver |
+|---|---|---|
+| Representation | Voxelised 3D grid -> interpolate back to points | Direct irregular mesh / point cloud |
+| Geometry handling | Regular grid mapping | Native irregular geometry |
+| Held-out sample 0 relative L2 | 0.5486 | **0.1226** |
+| Held-out sample 0 |u| relative L2 | 0.4889 | **0.0378** |
+| Held-out sample 0 ux relative L2 | 0.4940 | **0.0425** |
+| Held-out sample 0 uy relative L2 | 0.8091 | **0.1247** |
+| Held-out sample 0 uz relative L2 | 0.8292 | **0.0804** |
+| Competition-style dataset result | not supplied in matched form | **0.0638 ± 0.0198** |
+| FLOREN result | not supplied in matched form | **0.0991** |
+| Approx. competition rank | not directly established from supplied artifacts | **7th (Transolver), 16th (FLOREN @ 0.0991)** |
+| Multi-geometry qualitative evidence | Not supplied in comparable summary form | Included via multi-sample ux summary |
 
-- `docs/FNO_directory_guide.md`
-- `docs/transolver_directory_guide.md`
-
-These guides explain:
-
-- directory structure
-- script responsibilities
-- tensor shapes
-- preprocessing and normalisation
-- training and evaluation flow
-- saved outputs
-
----
-
-## Research purpose
-
-FLOREN is intended as a platform for comparing operator-learning and point-cloud autoregressive approaches for geometry-conditioned flow prediction.
-
-It is especially useful for questions such as:
-
-- how well do models generalise to unseen geometries?
-- what is gained by working directly on irregular meshes?
-- how much accuracy is lost when rasterising to grids?
-- how does autoregressive drift grow across rollout steps?
-- which components of the flow field are hardest to predict?
-
----
-
-## Limitations
-
-This is research code and may include assumptions specific to:
-
-- the Warped-IFW dataset
-- filename conventions used for geometry splitting
-- fixed 5-input / 5-output temporal windows
-- local project layout
-- hardware-specific JAX setup
-
-Before using the repository for a new dataset or benchmark, verify:
-
-- data format compatibility
-- geometry naming conventions
-- model hyperparameters
-- numerical stability on your hardware
-
----
-
-## Contributing
-
-If this repository is being shared with collaborators, a useful contribution workflow is:
-
-1. create a feature branch
-2. make focused changes
-3. document any config or data-format changes
-4. regenerate relevant outputs if needed
-5. open a pull request with a concise summary
-
-For substantial architectural changes, update the directory guides as well as the main README.
-
----
-
-## Citation
-
-If you use this repository in academic work, add the appropriate citation information here for:
-
-- the FLOREN project
-- the Warped-IFW dataset
-- the Transolver method
-- the Fourier Neural Operator method
-
-Example placeholder:
-
-```bibtex
-@misc{floren,
-  title={FLOREN: Flow Learning on Warped-IFW with Neural Operators and Point-Cloud Models},
-  author={Your Name},
-  year={2026}
-}
-```
-
----
-
-## License
-
-Add your chosen license here, for example:
-
-- MIT
-- Apache-2.0
-- BSD-3-Clause
-- proprietary / internal research use only
-
----
-
-## Contact
-
-For questions, issues, or collaboration, add:
-
-- maintainer name
-- GitHub handle
-- email or project contact route
+Overall, the supplied FLOREN comparison indicates that **direct irregular point-cloud modelling substantially outperforms voxel-grid mapping** on this benchmark. The strongest evidence comes from the large sample-level relative-L2 gap, the lower component-wise error distributions, the multi-geometry qualitative summary, and the available competition-style ranking context.

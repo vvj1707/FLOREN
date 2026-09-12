@@ -524,67 +524,88 @@ def plot_training_curves(
     history: dict,
     out_dir: Path,
     final_point_relL2: Optional[float] = None,
-    baseline_relL2:    Optional[float] = None,
+    baseline_relL2: Optional[float] = None,
 ) -> Path:
     """
-    Three-panel training diagnostic:
-      Left  — train/val loss curves with optional final point-level metric
-               and persistence baseline overlaid as horizontal lines.
-      Centre — learning rate schedule.
-      Right  — wall-clock time per epoch.
+    Three-panel training diagnostic matching the attached style:
+      Left   — train/val relative-L2 curves
+      Centre — learning-rate schedule
+      Right  — time per epoch
 
-    Notes
-    -----
-    The loss stored in training_history.json is the *training-set* relative L2
-    in whatever space the model was trained in (may be normalised).  The
-    final_point_relL2 overlay makes the gap to the competition metric explicit.
-    Accepts any subset of keys; missing keys are silently skipped so the plot
-    degrades gracefully if the history was saved with fewer fields.
+    Supports both the newer Transolver history keys and the older generic ones.
     """
-    epochs = np.arange(len(history.get("loss", [])))
-    has_val  = "val_loss"  in history and len(history["val_loss"])  == len(epochs)
-    has_lr   = "lr"        in history and len(history["lr"])        == len(epochs)
-    has_time = "time"      in history and len(history["time"])      == len(epochs)
+
+    # Prefer Transolver-specific keys if present
+    if "train_subsampled_relative_l2" in history:
+        train_key = "train_subsampled_relative_l2"
+    elif "train_loss" in history:
+        train_key = "train_loss"
+    elif "loss" in history:
+        train_key = "loss"
+    else:
+        raise ValueError("No recognised training-loss key found in history.")
+
+    if "val_subsampled_relative_l2" in history:
+        val_key = "val_subsampled_relative_l2"
+    elif "test_loss" in history:
+        val_key = "test_loss"
+    elif "val_loss" in history:
+        val_key = "val_loss"
+    else:
+        val_key = None
+
+    epochs = np.arange(len(history[train_key]))
+
+    has_val  = val_key is not None and len(history[val_key]) == len(epochs)
+    has_lr   = "lr" in history and len(history["lr"]) == len(epochs)
+    has_time = "time" in history and len(history["time"]) == len(epochs)
 
     fig, axs = plt.subplots(1, 3, figsize=(18, 4.5), dpi=FIG_DPI)
 
-    # ── loss panel ───────────────────────────────────────────────────────────
-    axs[0].plot(epochs, history["loss"], label="train", lw=1.8)
+    # ── left: training curves ───────────────────────────────────────────────
+    axs[0].plot(epochs, history[train_key], label="train (subsampled)")
     if has_val:
-        axs[0].plot(epochs, history["val_loss"], label="val", lw=1.8)
+        axs[0].plot(epochs, history[val_key], label="val (subsampled)")
+
     if final_point_relL2 is not None:
         axs[0].axhline(
-            final_point_relL2, color="tab:red", ls="--", lw=1.4,
+            final_point_relL2,
+            color="tab:red",
+            ls="--",
             label=f"point relL2={final_point_relL2:.4f}",
         )
+
     if baseline_relL2 is not None:
         axs[0].axhline(
-            baseline_relL2, color="gray", ls=":", lw=1.4,
-            label=f"persistence={baseline_relL2:.4f}",
+            baseline_relL2,
+            color="gray",
+            ls=":",
+            label=f"persistence baseline={baseline_relL2:.4f}",
         )
-    axs[0].set_xlabel("Epoch")
-    axs[0].set_ylabel("Relative L2")
-    axs[0].set_title("Training curves")
-    axs[0].legend(fontsize=8)
-    axs[0].grid(alpha=0.3)
 
-    # ── LR panel ─────────────────────────────────────────────────────────────
+    axs[0].set_xlabel("epoch")
+    axs[0].set_ylabel("relative L2")
+    axs[0].set_title(
+        "Training curves\n"
+        "(subsampled training metric ≠ final point-level metric)"
+    )
+    axs[0].legend(fontsize=8)
+
+    # ── middle: LR schedule ─────────────────────────────────────────────────
     if has_lr:
-        axs[1].plot(epochs, history["lr"], color="tab:orange", lw=1.8)
-        axs[1].set_xlabel("Epoch")
-        axs[1].set_ylabel("Learning rate")
+        axs[1].plot(epochs, history["lr"])
+        axs[1].set_xlabel("epoch")
+        axs[1].set_ylabel("learning rate")
         axs[1].set_title("LR schedule")
-        axs[1].grid(alpha=0.3)
     else:
         axs[1].set_visible(False)
 
-    # ── time panel ───────────────────────────────────────────────────────────
+    # ── right: time per epoch ───────────────────────────────────────────────
     if has_time:
-        axs[2].plot(epochs, history["time"], color="tab:green", lw=1.8)
-        axs[2].set_xlabel("Epoch")
-        axs[2].set_ylabel("Seconds")
+        axs[2].plot(epochs, history["time"])
+        axs[2].set_xlabel("epoch")
+        axs[2].set_ylabel("seconds")
         axs[2].set_title("Time per epoch")
-        axs[2].grid(alpha=0.3)
     else:
         axs[2].set_visible(False)
 
