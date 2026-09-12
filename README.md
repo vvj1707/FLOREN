@@ -1,4 +1,4 @@
-# Warped-IFW Results (FNO vs. TransolverAR)
+# FLOREN (FNO vs. TransolverAR)
 
 This page summarises the main benchmark results for **FLOREN** on the **Warped-IFW** geometry-conditioned unsteady-flow task.
 
