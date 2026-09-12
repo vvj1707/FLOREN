@@ -314,6 +314,82 @@ Typical artifact folders include:
 
 ---
 
+## Results
+
+### FNO vs. TransolverAR
+
+FLOREN compares two modelling pipelines on the **Warped-IFW** geometry-conditioned unsteady-flow task:
+
+- **FNO** — a voxel-grid baseline that rasterises irregular point clouds onto a fixed 3D grid and predicts future flow on that grid before interpolating back to points.
+- **TransolverAR** — an autoregressive point-cloud model that operates directly on irregular meshes without voxelisation.
+
+The task is to predict **5 future velocity frames from 5 past velocity frames**, using a geometry-disjoint split so that test geometries are unseen during training.
+
+### Headline comparison
+
+The clearest sample-level point-level relative L2 comparison available from the supplied results is:
+
+| Metric | FNO | TransolverAR |
+|---|---:|---:|
+| Relative L2 — sample 0 | 0.5486 | **0.1226** |
+| Relative L2 — sample 0, \|u\| error | 0.4889 | **0.0378** |
+| Relative L2 — sample 0, $u_x$ error | 0.4940 | **0.0425** |
+| Relative L2 — sample 0, $u_y$ error | 0.8091 | **0.1247** |
+| Relative L2 — sample 0, $u_z$ error | 0.8292 | **0.0804** |
+
+These values come from the labelled diagnostic figures for the illustrated held-out sample. They show a substantial advantage for **TransolverAR** on that sample.
+
+### Qualitative prediction comparison
+
+Frame-0 predictions for the same held-out sample are shown below.
+
+| FNO — voxel-grid mapping | TransolverAR — direct point cloud |
+|:---:|:---:|
+| ![FNO 3D wing surface](FNO/outputs/single/000/sample000_frame0_3d_wing_surface.png) | ![Transolver 3D wing surface](Transolver/outputs/single/000/sample000_frame0_3d_wing_surface.png) |
+| ![FNO 2D scatter](FNO/outputs/single/000/sample000_frame0_2d_scatter.png) | ![Transolver 2D scatter](Transolver/outputs/single/000/sample000_frame0_2d_scatter.png) |
+| ![FNO 2D contour scatter](FNO/outputs/single/000/sample000_frame0_2d_contour_scatter.png) | ![Transolver 2D contour scatter](Transolver/outputs/single/000/sample000_frame0_2d_contour_scatter.png) |
+
+The qualitative comparison highlights the difference between the two representations: **FNO** predicts through a regularised voxel-grid representation, while **TransolverAR** retains the original irregular sampling and performs autoregressive rollout directly on the mesh.
+
+### Component-wise error analysis
+
+#### FNO
+
+![FNO sample component losses](FNO/outputs/single/000/sample000_component_losses.png)
+
+![FNO dataset component loss distribution](FNO/outputs/component_losses/dataset_component_loss_boxplot.png)
+
+#### TransolverAR
+
+![Transolver sample component losses](Transolver/outputs/single/000/sample000_component_losses.png)
+
+![Transolver dataset component loss distribution](Transolver/outputs/component_losses/dataset_component_loss_boxplot.png)
+
+The dataset-level component plots show substantially higher error distributions for FNO across $u_x$, $u_y$, $u_z$, and $\|u\|$, while TransolverAR keeps the corresponding distributions lower. The remaining error for TransolverAR is largest in the $u_z$ channel among the illustrated components.
+
+### Batch metrics
+
+The full sample-by-sample metrics are available in the generated CSV reports:
+
+- [FNO batch metrics](FNO/outputs/report/batch_report_metrics.csv)
+- [TransolverAR batch metrics](Transolver/outputs/report/batch_report_metrics.csv)
+
+These reports are the appropriate place to inspect individual sample rankings and relative-L2 values.
+
+### Interpretation
+
+The results support the design hypothesis behind FLOREN:
+
+- **Voxel-grid mapping** provides a clean, structured operator-learning baseline and makes the irregular data easier to batch.
+- **Direct point-cloud modelling** avoids rasterisation and interpolation back to the original points, preserving the irregular geometric representation.
+- On the supplied sample-level qualitative and quantitative results, **TransolverAR outperforms the FNO voxel-grid baseline**.
+
+The comparison therefore suggests that, for this geometry-conditioned flow-rollout task, the information lost through voxelisation/interpolation can be significant, while direct irregular-mesh modelling provides substantially higher predictive fidelity.
+
+> **Note:** the reported headline values above are sample-level diagnostic values, not a dataset-wide mean. The batch CSV files should be used for a complete dataset-level statistical comparison.
+
+---
+
 ## Visualisation and diagnostics
 
 Both pipelines include post-training visualisation scripts for generating:
