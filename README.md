@@ -1,3 +1,4 @@
+````
 # FLOREN
 
 **FLOREN** is a research codebase for learning and analysing unsteady flow fields on the **Warped-IFW** dataset using neural operators and point-cloud models.
@@ -492,22 +493,4 @@ Example placeholder:
 ```
 
 ---
-
-## License
-
-Add your chosen license here, for example:
-
-- MIT
-- Apache-2.0
-- BSD-3-Clause
-- proprietary / internal research use only
-
----
-
-## Contact
-
-For questions, issues, or collaboration, add:
-
-- maintainer name
-- GitHub handle
-- email or project contact route
+````
