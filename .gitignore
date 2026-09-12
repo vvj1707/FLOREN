@@ -3,6 +3,11 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 
+# Generated results
+FNO/results/
+Transolver/results/
+Transolver/Transolver_Smoke/results/
+
 # Large MATLAB outputs
 *.mat
 
