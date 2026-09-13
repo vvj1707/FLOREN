@@ -103,9 +103,9 @@ These are **sample-level diagnostic values**, not final dataset-wide means for b
 
 ## Accuracy diagnostics
 
-| Fourier Neural Operator | Transolver |
-|:---:|:---:|
-| ![FNO training curves](FNO/outputs/diagnostics/training_curves.png) | ![Transolver ux summary](Transolver/outputs/single/ux_summary_frame0_4x3.png) |
+| Fourier Neural Operator |                                   Transolver                                   |
+|:---:|:------------------------------------------------------------------------------:|
+| ![FNO training curves](FNO/outputs/diagnostics/training_curves.png) |  ![Transolver ux summary](Transolver/outputs/diagnostics/training_curves.png)  |
 
 For the Fourier Neural Operator, the training-curve panel explicitly shows that the optimisation curves are measured in **normalised grid space**, which is not the same metric as the final point-level comparison metric.
 
